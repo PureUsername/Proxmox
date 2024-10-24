@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Copyright (c) 2021-2024 tteck
-# Author: tteck (tteckster)
+# Author: tteck
+# Co-Author: havardthom
 # License: MIT
 # https://github.com/tteck/Proxmox/raw/main/LICENSE
 
@@ -21,6 +22,12 @@ $STD apt-get install -y gpg
 $STD apt-get install -y git
 msg_ok "Installed Dependencies"
 
+msg_info "Installing Python3 Dependencies"
+$STD apt-get install -y --no-install-recommends \
+  python3 \
+  python3-pip
+msg_ok "Installed Python3 Dependencies"
+
 msg_info "Setting up Node.js Repository"
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
@@ -30,42 +37,39 @@ msg_ok "Set up Node.js Repository"
 msg_info "Installing Node.js"
 $STD apt-get update
 $STD apt-get install -y nodejs
-$STD npm install --global yarn
 msg_ok "Installed Node.js"
 
-msg_info "Installing Actual Budget"
-$STD git clone https://github.com/actualbudget/actual-server.git /opt/actualbudget
-mkdir -p /opt/actualbudget/server-files
-chown -R root:root /opt/actualbudget/server-files
-chmod 755 /opt/actualbudget/server-files
-cat <<EOF > /opt/actualbudget/.env
-ACTUAL_UPLOAD_DIR=/opt/actualbudget/server-files
-PORT=5006
+msg_info "Installing Open WebUI (Patience)"
+$STD git clone https://github.com/open-webui/open-webui.git /opt/open-webui
+cd /opt/open-webui/backend
+$STD pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+$STD pip3 install -r requirements.txt -U
+cd /opt/open-webui
+cp .env.example .env
+cat <<EOF >/opt/open-webui/.env
+ENV=prod
+ENABLE_OLLAMA_API=false
 EOF
-cd /opt/actualbudget
-$STD yarn install
-msg_ok "Installed Actual Budget"
+$STD npm install
+$STD npm run build
+msg_ok "Installed Open WebUI"
 
 msg_info "Creating Service"
-cat <<EOF >/etc/systemd/system/actualbudget.service
+cat <<EOF >/etc/systemd/system/open-webui.service
 [Unit]
-Description=Actual Budget Service
+Description=Open WebUI Service
 After=network.target
 
 [Service]
-Type=simple
-User=root
-Group=root
-WorkingDirectory=/opt/actualbudget
-EnvironmentFile=/opt/actualbudget/.env
-ExecStart=/usr/bin/yarn start
-Restart=always
-RestartSec=10
+Type=exec
+WorkingDirectory=/opt/open-webui
+EnvironmentFile=/opt/open-webui/.env
+ExecStart=/opt/open-webui/backend/start.sh
 
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl enable -q --now actualbudget.service
+systemctl enable -q --now open-webui.service
 msg_ok "Created Service"
 
 motd_ssh
